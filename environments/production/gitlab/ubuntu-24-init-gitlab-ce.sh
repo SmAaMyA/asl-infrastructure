@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 echo "Starting foundational setup for a clean VM state..."
@@ -9,7 +8,7 @@ apt install -y curl wget gnupg lsb-release software-properties-common
 
 # 2. Install Docker
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 apt update && apt install -y docker-ce docker-ce-cli containerd.io
 systemctl enable docker && systemctl start docker
 
@@ -26,10 +25,6 @@ ufw default allow outgoing
 ufw allow ssh
 
 echo "Foundational setup complete."
-
-
-
-#!/bin/bash
 
 # GitLab Installation Variables
 GITLAB_URL="https://gitlab.example.com"
@@ -49,8 +44,8 @@ dpkg-reconfigure --priority=low unattended-upgrades
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
-ufw allow 80/tcp       # HTTP for GitLab
-ufw allow 443/tcp      # HTTPS for GitLab
+ufw allow 80/tcp  # HTTP for GitLab
+ufw allow 443/tcp # HTTPS for GitLab
 ufw enable
 
 # SSH Hardening: enforce key-based login only, change default port
@@ -63,7 +58,7 @@ echo "Installing GitLab CE and configuring backups..."
 curl https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.deb.sh | bash
 apt install -y gitlab-ce
 gitlab-ctl reconfigure
-echo "0 3 * * * gitlab-backup create" >> /etc/crontab
+echo "0 3 * * * gitlab-backup create" >>/etc/crontab
 
 # 3. Configure SSL with Certbot
 apt install -y certbot
@@ -75,12 +70,10 @@ gitlab-ctl reconfigure
 # 4. Backup Verification for GitLab
 # Verify recent backup and alert if absent
 if [ ! -f "$OFF_CLUSTER_BACKUP/$(date +\%F)_gitlab_backup.tar" ]; then
-    echo "No recent backup found for GitLab on $(date +\%F)" | mail -s "GitLab Backup Alert" "${CERTBOT_USER}@${GITLAB_URL}"
+  echo "No recent backup found for GitLab on $(date +\%F)" | mail -s "GitLab Backup Alert" "${CERTBOT_USER}@${GITLAB_URL}"
 fi
 
 echo "GitLab CE refined setup complete."
-
-
 
 # Install Prometheus Node Exporter for resource monitoring
 echo "Installing Prometheus Node Exporter..."
@@ -90,7 +83,7 @@ mv node_exporter-1.3.1.linux-amd64/node_exporter /usr/local/bin/
 rm -rf node_exporter-1.3.1.linux-amd64*
 
 # Start Node Exporter as a systemd service
-cat <<EOF > /etc/systemd/system/node_exporter.service
+cat <<EOF >/etc/systemd/system/node_exporter.service
 [Unit]
 Description=Prometheus Node Exporter
 After=network.target
@@ -108,7 +101,6 @@ systemctl enable node_exporter
 systemctl start node_exporter
 echo "Node Exporter installed and started."
 
-
 # Install Promtail for log collection
 echo "Installing Promtail for centralized log collection..."
 wget https://github.com/grafana/loki/releases/download/v2.3.0/promtail-linux-amd64.zip
@@ -117,7 +109,7 @@ mv promtail-linux-amd64 /usr/local/bin/promtail
 rm promtail-linux-amd64.zip
 
 # Configure Promtail with default configuration for this node
-cat <<EOF > /etc/promtail-local-config.yaml
+cat <<EOF >/etc/promtail-local-config.yaml
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -139,7 +131,7 @@ scrape_configs:
 EOF
 
 # Start Promtail as a systemd service
-cat <<EOF > /etc/systemd/system/promtail.service
+cat <<EOF >/etc/systemd/system/promtail.service
 [Unit]
 Description=Promtail service
 After=network.target

@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 echo "Starting foundational setup for a clean VM state..."
@@ -9,7 +8,7 @@ apt install -y curl wget gnupg lsb-release software-properties-common
 
 # 2. Install Docker
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
 apt update && apt install -y docker-ce docker-ce-cli containerd.io
 systemctl enable docker && systemctl start docker
 
@@ -26,10 +25,6 @@ ufw default allow outgoing
 ufw allow ssh
 
 echo "Foundational setup complete."
-
-
-
-#!/bin/bash
 
 # Configuration Variables
 CONTROL_PLANE_IP="192.168.1.100"
@@ -58,8 +53,6 @@ etcdctl snapshot restore "$LATEST_BACKUP" --data-dir=/tmp/etcd-restore-test
 
 echo "Kubernetes Control Plane refined setup complete."
 
-
-
 # Install Prometheus Node Exporter for resource monitoring
 echo "Installing Prometheus Node Exporter..."
 wget https://github.com/prometheus/node_exporter/releases/download/v1.3.1/node_exporter-1.3.1.linux-amd64.tar.gz
@@ -68,7 +61,7 @@ mv node_exporter-1.3.1.linux-amd64/node_exporter /usr/local/bin/
 rm -rf node_exporter-1.3.1.linux-amd64*
 
 # Start Node Exporter as a systemd service
-cat <<EOF > /etc/systemd/system/node_exporter.service
+cat <<EOF >/etc/systemd/system/node_exporter.service
 [Unit]
 Description=Prometheus Node Exporter
 After=network.target
@@ -86,7 +79,6 @@ systemctl enable node_exporter
 systemctl start node_exporter
 echo "Node Exporter installed and started."
 
-
 # Install Promtail for log collection
 echo "Installing Promtail for centralized log collection..."
 wget https://github.com/grafana/loki/releases/download/v2.3.0/promtail-linux-amd64.zip
@@ -95,7 +87,7 @@ mv promtail-linux-amd64 /usr/local/bin/promtail
 rm promtail-linux-amd64.zip
 
 # Configure Promtail with default configuration for this node
-cat <<EOF > /etc/promtail-local-config.yaml
+cat <<EOF >/etc/promtail-local-config.yaml
 server:
   http_listen_port: 9080
   grpc_listen_port: 0
@@ -117,7 +109,7 @@ scrape_configs:
 EOF
 
 # Start Promtail as a systemd service
-cat <<EOF > /etc/systemd/system/promtail.service
+cat <<EOF >/etc/systemd/system/promtail.service
 [Unit]
 Description=Promtail service
 After=network.target
