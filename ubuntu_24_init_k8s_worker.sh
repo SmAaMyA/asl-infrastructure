@@ -1,17 +1,18 @@
 #!/bin/bash
 
-# Reusable Configuration Variables
+# Configuration Variables
 CONTROL_PLANE_IP="192.168.1.100"
 JOIN_COMMAND="<kubeadm join command from control-plane setup>"
+NODE_IP="<current_node_ip>"
 
-echo "Starting improved production setup for Kubernetes Worker Node on Ubuntu 24..."
+echo "Starting production-grade setup for Kubernetes Worker Node on Ubuntu 24..."
 
 # 1. System Hardening
 echo "Applying enhanced system hardening..."
 apt update && apt upgrade -y && apt install -y unattended-upgrades
 dpkg-reconfigure --priority=low unattended-upgrades
 
-# Configure UFW firewall
+# UFW Firewall: open only necessary ports
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
@@ -35,7 +36,7 @@ apt install -y curl vim ufw net-tools gnupg sudo auditd fail2ban logrotate
 systemctl enable fail2ban
 systemctl start fail2ban
 
-# 3. Docker and Kubernetes Dependencies
+# 3. Docker and Kubernetes Dependencies (Preserving Existing)
 apt install -y apt-transport-https ca-certificates curl software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
@@ -58,27 +59,40 @@ echo "Adding labels and taints for workload isolation..."
 kubectl label node $NODE_IP node-type=worker
 kubectl taint node $NODE_IP dedicated=worker:NoSchedule
 
-# 6. Anti-Affinity for Key Deployments
-echo "Configuring anti-affinity for workload separation..."
+# 6. Configure Cluster Autoscaler for Scaling Worker Nodes
+echo "Installing Cluster Autoscaler for worker node scaling..."
+kubectl apply -f https://github.com/kubernetes/autoscaler/releases/download/cluster-autoscaler-1.21.1/cluster-autoscaler.yaml
+
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: example-deployment
+  name: cluster-autoscaler
+  namespace: kube-system
 spec:
-  replicas: 2
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
   template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
     spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                    - example-app
-            topologyKey: "failure-domain.beta.kubernetes.io/zone"
+      containers:
+        - name: cluster-autoscaler
+          image: k8s.gcr.io/cluster-autoscaler:v1.21.1
+          command:
+            - ./cluster-autoscaler
+            - --cloud-provider=aws
+            - --nodes=1:5:$NODE_IP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
 EOF
 
-echo "Worker Node setup complete with production-grade hardening, workload isolation, and optimizations."
+echo "Worker Node setup complete with workload isolation, autoscaling, and production-grade hardening."

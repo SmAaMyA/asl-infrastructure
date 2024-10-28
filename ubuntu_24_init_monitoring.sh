@@ -1,13 +1,13 @@
 #!/bin/bash
 
-echo "Starting improved production setup for Monitoring Server on Ubuntu 24..."
+echo "Starting production-grade setup for Monitoring Server on Ubuntu 24..."
 
 # 1. System Hardening
 echo "Applying enhanced system hardening..."
 apt update && apt upgrade -y && apt install -y unattended-upgrades
 dpkg-reconfigure --priority=low unattended-upgrades
 
-# Configure UFW firewall for monitoring services
+# UFW Firewall: open only necessary ports for monitoring services
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
@@ -33,11 +33,12 @@ apt install -y curl vim ufw net-tools gnupg sudo auditd fail2ban logrotate
 systemctl enable fail2ban
 systemctl start fail2ban
 
-# 3. Install Prometheus and Configure Alerts (Existing)
+# 3. Prometheus and Alertmanager for Monitoring
 kubectl apply -f https://prometheus-community.github.io/helm-charts
 kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/main/bundle.yaml
 
-# Prometheus alerts configuration for critical monitoring
+# Configure Prometheus with Alertmanager
+echo "Setting up Prometheus and Alertmanager for alerts..."
 cat <<EOF >/etc/prometheus/alert.rules.yml
 groups:
   - name: node-health
@@ -59,19 +60,14 @@ groups:
 EOF
 systemctl restart prometheus
 
-# 4. Install Grafana and Configure for Monitoring (Existing)
+# 4. Install Grafana and Loki for Monitoring and Log Aggregation
 kubectl apply -f https://raw.githubusercontent.com/grafana/grafana/main/production/grafana.yaml
 kubectl apply -f https://grafana.github.io/loki/charts/loki-stack
 
-# 5. Secure Elastic Stack with SSL/TLS (New Addition)
+# 5. Secure Elastic Stack with SSL/TLS
 echo "Configuring SSL/TLS for Elasticsearch..."
 openssl req -newkey rsa:4096 -nodes -keyout /etc/elasticsearch/ssl/elasticsearch.key -out /etc/elasticsearch/ssl/elasticsearch.crt -subj "/CN=elasticsearch"
 kubectl create secret generic elastic-cert --from-file=/etc/elasticsearch/ssl/elasticsearch.crt --from-file=/etc/elasticsearch/ssl/elasticsearch.key -n monitoring
-
-# 6. Jaeger for Tracing (New Addition)
-echo "Setting up Jaeger for distributed tracing..."
-kubectl create namespace observability
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/operator.yaml -n observability
 
 # Log rotation for system and application logs
 echo "/var/log/*.log {
@@ -84,4 +80,4 @@ echo "/var/log/*.log {
   create 640 root adm
 }" >/etc/logrotate.d/all-logs
 
-echo "Monitoring server setup complete with production-grade hardening, advanced monitoring, and tracing."
+echo "Monitoring server setup complete with SSL/TLS, advanced monitoring, and alerting."
