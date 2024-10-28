@@ -9,3 +9,12 @@ groups:
           severity: critical
         annotations:
           summary: "Instance {{ $labels.instance }} has high memory usage"
+          description: "Memory usage is critical, below 10% available."
+      - alert: HighCPUUsage
+        expr: rate(node_cpu_seconds_total{mode="idle"}[5m]) < 0.2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Instance {{ $labels.instance }} has high CPU usage"
+          description: "CPU usage is high, below 20% idle."

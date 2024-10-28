@@ -1,0 +1,24 @@
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: default
+  name: view-only-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: view-only-binding
+  namespace: default
+subjects:
+  - kind: User
+    name: "view-user"
+    apiGroup: ""
+roleRef:
+  kind: Role
+  name: view-only-role
+  apiGroup: "rbac.authorization.k8s.io"
