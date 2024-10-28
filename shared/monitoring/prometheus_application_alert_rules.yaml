@@ -1,0 +1,21 @@
+
+groups:
+  - name: application-rules
+    rules:
+      - alert: PodHighRestartCount
+        expr: rate(kube_pod_container_status_restarts_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High restart count for pod {{ $labels.pod }}"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} has restarted frequently over the last 5 minutes."
+
+      - alert: PodOOMKilled
+        expr: increase(kube_pod_container_status_terminated_reason{reason='OOMKilled'}[5m]) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} was killed due to Out of Memory"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} encountered an OOM kill."

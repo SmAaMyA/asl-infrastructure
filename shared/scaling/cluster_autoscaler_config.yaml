@@ -1,0 +1,15 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+data:
+  cluster-autoscaler-config.yaml: |
+    scale-down-delay-after-add: 10m
+    scale-down-delay-after-delete: 1m
+    scale-down-delay-after-failure: 3m
+    scale-down-enabled: true
+    scale-down-utilization-threshold: 0.5
+    scale-down-unneeded-time: 10m
+    balance-similar-node-groups: true
