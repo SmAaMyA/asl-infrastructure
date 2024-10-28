@@ -167,7 +167,7 @@ cat <<EOF >/etc/nginx/sites-available/grafana
 server {
     listen 80;
     server_name grafana.example.com;
-    return 301 https://$host$request_uri;
+    return 301 https://\$host\$request_uri;
 }
 
 server {
@@ -312,6 +312,6 @@ systemctl enable promtail
 
 echo "Setting up regular backups of configuration files..."
 mkdir -p /var/backups/monitoring
-echo "0 3 * * * tar -czf /var/backups/monitoring/prometheus-config-$(date +\%F).tar.gz /etc/prometheus /etc/loki /etc/grafana" | tee -a /etc/crontab
+echo "0 3 * * * tar -czf /var/backups/monitoring/prometheus-config-\$(date +\\%F).tar.gz /etc/prometheus /etc/loki /etc/grafana" | tee -a /etc/crontab
 
 echo "Monitoring VM setup complete with Prometheus, Grafana, Loki, and Promtail, all with enhanced security and persistence."
