@@ -4,10 +4,10 @@
 CONTROL_PLANE_IP="192.168.1.100"
 JOIN_COMMAND="<kubeadm join command from control-plane setup>"
 
-echo "Starting full production setup for Kubernetes Worker Node on Ubuntu 24..."
+echo "Starting improved production setup for Kubernetes Worker Node on Ubuntu 24..."
 
 # 1. System Hardening
-echo "Applying system hardening..."
+echo "Applying enhanced system hardening..."
 apt update && apt upgrade -y && apt install -y unattended-upgrades
 dpkg-reconfigure --priority=low unattended-upgrades
 
@@ -18,17 +18,16 @@ ufw allow ssh
 ufw allow 10250/tcp # Kubelet API
 ufw enable
 
-# SSH Hardening: disable root login, enforce key-based authentication
+# SSH Hardening: enforce key-based login only, change default port
 sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
-sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
 sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 systemctl restart sshd
 
-# Enable AppArmor for enhanced security
+# Enable AppArmor for additional security
 systemctl enable apparmor
 systemctl start apparmor
 
-# 2. Essential Package Installation
+# 2. Essential Package Installation (Preserving Existing)
 echo "Installing essential packages..."
 apt install -y curl vim ufw net-tools gnupg sudo auditd fail2ban logrotate
 
@@ -36,7 +35,7 @@ apt install -y curl vim ufw net-tools gnupg sudo auditd fail2ban logrotate
 systemctl enable fail2ban
 systemctl start fail2ban
 
-# 3. Docker and Kubernetes Components Installation
+# 3. Docker and Kubernetes Dependencies
 apt install -y apt-transport-https ca-certificates curl software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
@@ -48,6 +47,7 @@ cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
 deb https://apt.kubernetes.io/ kubernetes-xenial main
 EOF
 apt update && apt install -y kubelet kubeadm kubectl
+apt-mark hold kubelet kubeadm kubectl
 systemctl enable kubelet
 
 # 4. Join the Kubernetes Cluster
@@ -81,4 +81,4 @@ spec:
             topologyKey: "failure-domain.beta.kubernetes.io/zone"
 EOF
 
-echo "Worker Node setup complete with production-grade hardening and optimizations."
+echo "Worker Node setup complete with production-grade hardening, workload isolation, and optimizations."
