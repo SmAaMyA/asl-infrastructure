@@ -1,0 +1,30 @@
+
+groups:
+  - name: critical-alerts
+    rules:
+      - alert: APIServerLatencyHigh
+        expr: histogram_quantile(0.99, sum(rate(apiserver_request_duration_seconds_bucket[5m])) by (le)) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High latency detected in API Server"
+          description: "The API server is experiencing high latency for 99th percentile requests (> 1s)."
+
+      - alert: EtcdHighDiskUsage
+        expr: etcd_disk_wal_fsync_duration_seconds_sum / etcd_disk_wal_fsync_duration_seconds_count > 0.25
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk sync latency in etcd"
+          description: "etcd is experiencing high disk latency, which could impact data durability."
+
+      - alert: EtcdOutOfMemory
+        expr: process_resident_memory_bytes{job="etcd"} > 2.5 * 1024 * 1024 * 1024
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Out of Memory warning for etcd"
+          description: "etcd memory usage has exceeded 2.5GB, which might lead to OOM issues."

@@ -1,0 +1,28 @@
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restrict-cross-namespace-traffic
+  namespace: default
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              project: frontend   # Allowing traffic only from the frontend namespace
+    - ports:
+        - protocol: TCP
+          port: 80  # HTTP service only
+
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              project: backend    # Limiting outgoing traffic to the backend namespace only
+    - ports:
+        - protocol: TCP
+          port: 443  # HTTPS service only
