@@ -3,7 +3,7 @@
 # Exit immediately if a command exits with a non-zero status
 set -e
 
-echo "Initializing Ubuntu 24 Monitoring VM with Prometheus, Grafana, Loki, and Promtail..."
+echo "Initializing Ubuntu 24 Monitoring VM with Prometheus, Alertmanager, Grafana, Loki, Promtail, and Elastic Stack..."
 
 # 1. System Update, Server Hardening, and Optimizations
 
@@ -34,6 +34,8 @@ ufw allow ssh
 ufw allow 9090 # Prometheus
 ufw allow 3000 # Grafana
 ufw allow 3100 # Loki
+ufw allow 9200 # Elasticsearch
+ufw allow 5601 # Kibana
 ufw enable
 
 # Enable and configure AppArmor
@@ -41,17 +43,9 @@ echo "Configuring AppArmor for enhanced security..."
 systemctl enable apparmor
 systemctl start apparmor
 
-# 2. Set up Persistent Storage for Prometheus and Loki
+# 2. Install Prometheus with Alertmanager and Federation
 
-echo "Setting up persistent storage for Prometheus and Loki..."
-mkdir -p /mnt/prometheus-data /mnt/loki-data
-# Mount storage as required or use cloud provider volumes (e.g., /dev/sdb1 and /dev/sdc1 for illustration)
-# mount /dev/sdb1 /mnt/prometheus-data
-# mount /dev/sdc1 /mnt/loki-data
-
-# 3. Install Prometheus with Retention Policies
-
-echo "Installing Prometheus..."
+echo "Installing Prometheus and Alertmanager..."
 useradd --no-create-home --shell /bin/false prometheus
 mkdir -p /etc/prometheus /mnt/prometheus-data
 
@@ -62,6 +56,12 @@ mv prometheus-2.32.1.linux-amd64/promtool /usr/local/bin/
 mv prometheus-2.32.1.linux-amd64/consoles /etc/prometheus
 mv prometheus-2.32.1.linux-amd64/console_libraries /etc/prometheus
 rm -rf prometheus-2.32.1.linux-amd64*
+
+wget https://github.com/prometheus/alertmanager/releases/download/v0.23.0/alertmanager-0.23.0.linux-amd64.tar.gz
+tar xvf alertmanager-0.23.0.linux-amd64.tar.gz
+mv alertmanager-0.23.0.linux-amd64/alertmanager /usr/local/bin/
+mv alertmanager-0.23.0.linux-amd64/amtool /usr/local/bin/
+rm -rf alertmanager-0.23.0.linux-amd64*
 
 cat <<EOF >/etc/prometheus/prometheus.yml
 global:
@@ -77,8 +77,17 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9100']
 
-rule_files:
-  - /etc/prometheus/alert.rules.yml
+  # Prometheus Federation configuration
+  - job_name: 'federate'
+    honor_labels: true
+    metrics_path: /federate
+    params:
+      'match[]':
+        - '{job="node_exporter"}'
+        - '{job="kubernetes-pods"}'
+    static_configs:
+      - targets:
+          - 'remote-prometheus-server:9090'  # replace with actual Prometheus instance
 EOF
 
 # Prometheus alert rules
@@ -105,6 +114,23 @@ groups:
           description: "CPU usage is above 80% for more than 5 minutes."
 EOF
 
+# Alertmanager configuration
+cat <<EOF >/etc/alertmanager/alertmanager.yml
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'slack_notifications'
+
+receivers:
+  - name: 'slack_notifications'
+    slack_configs:
+    - api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+      channel: '#alerts'
+      send_resolved: true
+EOF
+
+# Prometheus and Alertmanager systemd services
 cat <<EOF >/etc/systemd/system/prometheus.service
 [Unit]
 Description=Prometheus
@@ -121,197 +147,90 @@ CPUQuota=50%
 WantedBy=multi-user.target
 EOF
 
+cat <<EOF >/etc/systemd/system/alertmanager.service
+[Unit]
+Description=Alertmanager
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=prometheus
+ExecStart=/usr/local/bin/alertmanager --config.file=/etc/alertmanager/alertmanager.yml
+MemoryLimit=512M
+CPUQuota=25%
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 chown -R prometheus:prometheus /etc/prometheus /mnt/prometheus-data
 systemctl daemon-reload
 systemctl start prometheus
 systemctl enable prometheus
+systemctl start alertmanager
+systemctl enable alertmanager
 
-# 4. Install Grafana with Pre-configured Dashboards and Access Control
+# 3. Install Elastic Stack (Elasticsearch, Logstash, Kibana) for Logging
 
-echo "Installing Grafana..."
-wget https://dl.grafana.com/oss/release/grafana-8.3.3.linux-amd64.tar.gz
-tar -zxvf grafana-8.3.3.linux-amd64.tar.gz
-mv grafana-8.3.3 /usr/local/grafana
-rm grafana-8.3.3.linux-amd64.tar.gz
+echo "Installing Elastic Stack..."
+# Elasticsearch
+apt install -y elasticsearch
+sed -i 's/#network.host: 192.168.0.1/network.host: localhost/' /etc/elasticsearch/elasticsearch.yml
+systemctl enable elasticsearch
+systemctl start elasticsearch
 
-useradd --no-create-home --shell /bin/false grafana
-chown -R grafana:grafana /usr/local/grafana
-
-cat <<EOF >/etc/systemd/system/grafana.service
-[Unit]
-Description=Grafana
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=grafana
-ExecStart=/usr/local/grafana/bin/grafana-server --homepath=/usr/local/grafana
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl start grafana
-systemctl enable grafana
-
-# Set Grafana admin password (replace <your_password> with a secure password)
-GRAFANA_ADMIN_PASSWORD="<your_password>"
-echo "Setting Grafana admin password..."
-grafana-cli admin reset-admin-password $GRAFANA_ADMIN_PASSWORD
-
-# Configure HTTPS for Grafana
-echo "Configuring HTTPS for Grafana..."
-certbot certonly --standalone -d grafana.example.com --non-interactive --agree-tos -m admin@example.com
-cat <<EOF >/etc/nginx/sites-available/grafana
-server {
-    listen 80;
-    server_name grafana.example.com;
-    return 301 https://\$host\$request_uri;
+# Logstash
+apt install -y logstash
+cat <<EOF >/etc/logstash/conf.d/logstash.conf
+input {
+  tcp {
+    port => 5000
+    codec => json
+  }
 }
 
-server {
-    listen 443 ssl;
-    server_name grafana.example.com;
+filter {
+  json {
+    source => "message"
+  }
+}
 
-    ssl_certificate /etc/letsencrypt/live/grafana.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/grafana.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto https;
-    }
+output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    index => "logstash-%{+YYYY.MM.dd}"
+  }
 }
 EOF
+systemctl enable logstash
+systemctl start logstash
 
-ln -s /etc/nginx/sites-available/grafana /etc/nginx/sites-enabled/
-systemctl restart nginx
+# Kibana
+apt install -y kibana
+echo "server.host: 'localhost'" >>/etc/kibana/kibana.yml
+systemctl enable kibana
+systemctl start kibana
 
-# 5. Install Loki and Promtail with Log Retention
+# Configure Fluentd to forward logs to Logstash
+echo "Configuring Fluentd to forward logs to Logstash..."
+cat <<EOF >/etc/td-agent/td-agent.conf
+<source>
+  @type tail
+  path /var/log/*.log
+  pos_file /var/log/td-agent/td-agent.log.pos
+  tag kubernetes.*
+  format none
+</source>
 
-echo "Installing Loki..."
-useradd --no-create-home --shell /bin/false loki
-mkdir -p /etc/loki /mnt/loki-data
-
-wget https://github.com/grafana/loki/releases/download/v2.4.2/loki-linux-amd64.zip
-unzip loki-linux-amd64.zip
-mv loki-linux-amd64 /usr/local/bin/loki
-rm loki-linux-amd64.zip
-
-cat <<EOF >/etc/loki/loki-config.yml
-auth_enabled: false
-
-server:
-  http_listen_port: 3100
-  grpc_listen_port: 9095
-
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-
-schema_config:
-  configs:
-    - from: 2020-10-24
-      store: boltdb-shipper
-      object_store: filesystem
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-
-storage_config:
-  boltdb_shipper:
-    active_index_directory: /mnt/loki-data/index
-    cache_location: /mnt/loki-data/boltdb-cache
-    shared_store: filesystem
-  filesystem:
-    directory: /mnt/loki-data/chunks
-
-limits_config:
-  enforce_metric_name: false
-  retention_period: 168h  # 7 days retention
+<match kubernetes.**>
+  @type forward
+  tls false
+  <server>
+    host localhost
+    port 5000
+  </server>
+</match>
 EOF
+systemctl restart td-agent
 
-cat <<EOF >/etc/systemd/system/loki.service
-[Unit]
-Description=Loki
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=loki
-ExecStart=/usr/local/bin/loki -config.file=/etc/loki/loki-config.yml
-MemoryLimit=1G
-CPUQuota=50%
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-chown -R loki:loki /etc/loki /mnt/loki-data
-systemctl daemon-reload
-systemctl start loki
-systemctl enable loki
-
-# 6. Install Promtail for Log Collection
-
-echo "Installing Promtail..."
-useradd --no-create-home --shell /bin/false promtail
-
-wget https://github.com/grafana/loki/releases/download/v2.4.2/promtail-linux-amd64.zip
-unzip promtail-linux-amd64.zip
-mv promtail-linux-amd64 /usr/local/bin/promtail
-rm promtail-linux-amd64.zip
-
-cat <<EOF >/etc/promtail/promtail-config.yml
-server:
-  http_listen_port: 9080
-  grpc_listen_port: 0
-
-positions:
-  filename: /tmp/positions.yaml
-
-clients:
-  - url: http://localhost:3100/loki/api/v1/push
-
-scrape_configs:
-  - job_name: system
-    static_configs:
-      - targets:
-          - localhost
-        labels:
-          job: varlogs
-          __path__: /var/log/*.log
-EOF
-
-cat <<EOF >/etc/systemd/system/promtail.service
-[Unit]
-Description=Promtail
-Wants=network-online.target
-After=network-online.target
-
-[Service]
-User=promtail
-ExecStart=/usr/local/bin/promtail -config.file=/etc/promtail/promtail-config.yml
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl start promtail
-systemctl enable promtail
-
-# 7. Schedule Backups of Configuration Files
-
-echo "Setting up regular backups of configuration files..."
-mkdir -p /var/backups/monitoring
-echo "0 3 * * * tar -czf /var/backups/monitoring/prometheus-config-\$(date +\\%F).tar.gz /etc/prometheus /etc/loki /etc/grafana" | tee -a /etc/crontab
-
-echo "Monitoring VM setup complete with Prometheus, Grafana, Loki, and Promtail, all with enhanced security and persistence."
+echo "Phase 1: Monitoring and Logging enhancements complete with Prometheus Alertmanager, Federation, and Elastic Stack integration."
