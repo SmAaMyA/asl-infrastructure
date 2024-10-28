@@ -17,8 +17,8 @@ dpkg-reconfigure --priority=low unattended-upgrades
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow ssh
-ufw allow 80
-ufw allow 443
+ufw allow from any port 80 <trusted-ip >to  # HTTP for GitLab
+ufw allow from any port 443 <trusted-ip >to # HTTPS for GitLab
 ufw enable
 
 # SSH Hardening: enforce key-based login only, change default port

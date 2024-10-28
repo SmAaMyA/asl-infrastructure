@@ -60,11 +60,16 @@ groups:
 EOF
 systemctl restart prometheus
 
-# 4. Install Grafana and Loki for Monitoring and Log Aggregation
+# 4. Configure Prometheus to use Service Accounts (New Addition)
+echo "Configuring Prometheus API access with service accounts for secure Kubernetes integration..."
+kubectl create serviceaccount prometheus -n monitoring
+kubectl create clusterrolebinding prometheus --clusterrole=cluster-admin --serviceaccount=monitoring:prometheus
+
+# 5. Install Grafana and Loki for Monitoring and Log Aggregation
 kubectl apply -f https://raw.githubusercontent.com/grafana/grafana/main/production/grafana.yaml
 kubectl apply -f https://grafana.github.io/loki/charts/loki-stack
 
-# 5. Secure Elastic Stack with SSL/TLS
+# 6. Secure Elastic Stack with SSL/TLS
 echo "Configuring SSL/TLS for Elasticsearch..."
 openssl req -newkey rsa:4096 -nodes -keyout /etc/elasticsearch/ssl/elasticsearch.key -out /etc/elasticsearch/ssl/elasticsearch.crt -subj "/CN=elasticsearch"
 kubectl create secret generic elastic-cert --from-file=/etc/elasticsearch/ssl/elasticsearch.crt --from-file=/etc/elasticsearch/ssl/elasticsearch.key -n monitoring
