@@ -4,10 +4,40 @@
 CONTROL_PLANE_IP="192.168.1.100"
 JOIN_COMMAND="<kubeadm join command from control-plane setup>"
 
-echo "Initializing Ubuntu 24 for Kubernetes Worker Node with Anti-Affinity and Autoscaler support..."
+echo "Starting full production setup for Kubernetes Worker Node on Ubuntu 24..."
 
-# 1. Install Docker and Kubernetes Dependencies
-apt update && apt install -y apt-transport-https ca-certificates curl software-properties-common
+# 1. System Hardening
+echo "Applying system hardening..."
+apt update && apt upgrade -y && apt install -y unattended-upgrades
+dpkg-reconfigure --priority=low unattended-upgrades
+
+# Configure UFW firewall
+ufw default deny incoming
+ufw default allow outgoing
+ufw allow ssh
+ufw allow 10250/tcp # Kubelet API
+ufw enable
+
+# SSH Hardening: disable root login, enforce key-based authentication
+sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
+sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+systemctl restart sshd
+
+# Enable AppArmor for enhanced security
+systemctl enable apparmor
+systemctl start apparmor
+
+# 2. Essential Package Installation
+echo "Installing essential packages..."
+apt install -y curl vim ufw net-tools gnupg sudo auditd fail2ban logrotate
+
+# Enable and start Fail2Ban
+systemctl enable fail2ban
+systemctl start fail2ban
+
+# 3. Docker and Kubernetes Components Installation
+apt install -y apt-transport-https ca-certificates curl software-properties-common
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 apt update && apt install -y docker-ce
@@ -18,18 +48,17 @@ cat <<EOF >/etc/apt/sources.list.d/kubernetes.list
 deb https://apt.kubernetes.io/ kubernetes-xenial main
 EOF
 apt update && apt install -y kubelet kubeadm kubectl
-apt-mark hold kubelet kubeadm kubectl
 systemctl enable kubelet
 
-# 2. Join the Kubernetes Cluster
+# 4. Join the Kubernetes Cluster
 $JOIN_COMMAND
 
-# 3. Node Labels and Taints for Workload Isolation
+# 5. Node Labels and Taints for Workload Isolation
 echo "Adding labels and taints for workload isolation..."
 kubectl label node $NODE_IP node-type=worker
 kubectl taint node $NODE_IP dedicated=worker:NoSchedule
 
-# 4. Anti-Affinity for Key Deployments
+# 6. Anti-Affinity for Key Deployments
 echo "Configuring anti-affinity for workload separation..."
 cat <<EOF | kubectl apply -f -
 apiVersion: apps/v1
@@ -52,4 +81,4 @@ spec:
             topologyKey: "failure-domain.beta.kubernetes.io/zone"
 EOF
 
-echo "Worker Node initialization complete with workload isolation and anti-affinity."
+echo "Worker Node setup complete with production-grade hardening and optimizations."
