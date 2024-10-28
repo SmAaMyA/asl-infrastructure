@@ -1,3 +1,0 @@
-- --initial-cluster=etcd1=https://192.168.1.101:2380,etcd2=https://192.168.1.102:2380,etcd3=https://192.168.1.103:2380
-- --listen-peer-urls=https://0.0.0.0:2380
-- --advertise-client-urls=https://<node_ip>:2379

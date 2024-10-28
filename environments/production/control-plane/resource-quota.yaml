@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-resources
+  namespace: monitoring
+spec:
+  hard:
+    requests.cpu: "4" # Minimum CPU resources reserved
+    requests.memory: 8Gi # Minimum memory reserved
+    limits.cpu: "10" # Max CPU allowed
+    limits.memory: 16Gi # Max memory allowed

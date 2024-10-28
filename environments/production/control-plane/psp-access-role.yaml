@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: psp-access
+  namespace: default
+rules:
+  - apiGroups:
+      - policy
+    resourceNames:
+      - restricted # The PSP resource name you created
+    resources:
+      - podsecuritypolicies
+    verbs:
+      - use
