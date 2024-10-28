@@ -13,7 +13,7 @@ apt update && apt upgrade -y && apt autoremove -y
 
 # Install essential tools
 echo "Installing essential tools..."
-apt install -y curl wget vim ufw net-tools gnupg lsb-release sudo auditd unattended-upgrades fail2ban apparmor apparmor-profiles apparmor-utils logrotate nginx
+apt install -y curl wget vim ufw net-tools gnupg lsb-release sudo auditd unattended-upgrades fail2ban apparmor apparmor-profiles apparmor-utils logrotate nginx apache2-utils certbot
 
 # SSH hardening: disable root login, enforce key-based authentication, change default port
 echo "Hardening SSH access..."
@@ -67,10 +67,42 @@ cat <<EOF >/etc/prometheus/prometheus.yml
 global:
   scrape_interval: 15s
 
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
 scrape_configs:
   - job_name: 'node_exporter'
     static_configs:
       - targets: ['localhost:9100']
+
+rule_files:
+  - /etc/prometheus/alert.rules.yml
+EOF
+
+# Prometheus alert rules
+cat <<EOF >/etc/prometheus/alert.rules.yml
+groups:
+  - name: system_alerts
+    rules:
+      - alert: HighMemoryUsage
+        expr: node_memory_Active_bytes / node_memory_MemTotal_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 80% for more than 5 minutes."
+
+      - alert: HighCPUUsage
+        expr: (100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% for more than 5 minutes."
 EOF
 
 cat <<EOF >/etc/systemd/system/prometheus.service
@@ -82,6 +114,8 @@ After=network-online.target
 [Service]
 User=prometheus
 ExecStart=/usr/local/bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/mnt/prometheus-data --storage.tsdb.retention.time=30d --storage.tsdb.min-block-duration=2h --web.console.templates=/etc/prometheus/consoles --web.console.libraries=/etc/prometheus/console_libraries
+MemoryLimit=1G
+CPUQuota=50%
 
 [Install]
 WantedBy=multi-user.target
@@ -125,6 +159,36 @@ systemctl enable grafana
 GRAFANA_ADMIN_PASSWORD="<your_password>"
 echo "Setting Grafana admin password..."
 grafana-cli admin reset-admin-password $GRAFANA_ADMIN_PASSWORD
+
+# Configure HTTPS for Grafana
+echo "Configuring HTTPS for Grafana..."
+certbot certonly --standalone -d grafana.example.com --non-interactive --agree-tos -m admin@example.com
+cat <<EOF >/etc/nginx/sites-available/grafana
+server {
+    listen 80;
+    server_name grafana.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name grafana.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/grafana.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/grafana.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+EOF
+
+ln -s /etc/nginx/sites-available/grafana /etc/nginx/sites-enabled/
+systemctl restart nginx
 
 # 5. Install Loki and Promtail with Log Retention
 
@@ -183,6 +247,8 @@ After=network-online.target
 [Service]
 User=loki
 ExecStart=/usr/local/bin/loki -config.file=/etc/loki/loki-config.yml
+MemoryLimit=1G
+CPUQuota=50%
 
 [Install]
 WantedBy=multi-user.target
